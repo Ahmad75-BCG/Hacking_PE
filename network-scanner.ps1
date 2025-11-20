@@ -1,30 +1,30 @@
+# UTF-8 with BOM
 <#
 .SYNOPSIS
-    أداة فحص الشبكة التعليمية - للأغراض التعليمية فقط
+    Network Security Scanner Tool - Educational Purposes Only
 .DESCRIPTION
-    سكريبت PowerShell لفحص الشبكة المحلية واكتشاف الأجهزة والخدمات
-    يستخدم فقط للأغراض التعليمية وبإذن صريح
+    PowerShell script for scanning local network and discovering devices and services
+    For educational purposes only with explicit permission
 .NOTES
-    المؤلف: فريق الأمن السيبراني
-    الإصدار: 1.0
-    التاريخ: 2024
+    Author: Cybersecurity Team
+    Version: 1.0
+    Date: 2024
 #>
 
-# إعدادات الألوان
+# Color settings
 $Host.UI.RawUI.ForegroundColor = "White"
 
 function Show-Banner {
     Write-Host @"
 ╔═══════════════════════════════════════════════════════════╗
-║          أداة فحص الشبكة التعليمية                      ║
 ║          Network Security Scanner Tool                   ║
-║          للأغراض التعليمية فقط                          ║
+║          Educational Purposes Only                       ║
 ╚═══════════════════════════════════════════════════════════╝
 "@ -ForegroundColor Cyan
 }
 
 function Get-LocalNetworkInfo {
-    Write-Host "`n[*] جمع معلومات الشبكة المحلية..." -ForegroundColor Yellow
+    Write-Host "`n[*] Gathering local network information..." -ForegroundColor Yellow
     
     $networkInfo = @{
         Hostname = $env:COMPUTERNAME
@@ -36,7 +36,7 @@ function Get-LocalNetworkInfo {
         DefaultGateway = $null
     }
     
-    # جمع معلومات IP
+    # Collect IP information
     $adapters = Get-NetIPConfiguration | Where-Object {$_.IPv4Address -ne $null}
     foreach ($adapter in $adapters) {
         $networkInfo.IPAddresses += [PSCustomObject]@{
@@ -53,11 +53,11 @@ function Get-LocalNetworkInfo {
 }
 
 function Get-NetworkDevices {
-    Write-Host "`n[*] فحص الأجهزة المتصلة بالشبكة..." -ForegroundColor Yellow
+    Write-Host "`n[*] Scanning network devices..." -ForegroundColor Yellow
     
     $devices = @()
     
-    # استخدام ARP للحصول على الأجهزة المتصلة
+    # Use ARP to get connected devices
     $arpCache = Get-NetNeighbor | Where-Object {$_.State -ne "Unreachable"}
     
     foreach ($entry in $arpCache) {
@@ -79,15 +79,15 @@ function Test-DeviceConnectivity {
         [string]$IPAddress
     )
     
-    Write-Host "[*] اختبار الاتصال بـ $IPAddress..." -ForegroundColor Yellow
+    Write-Host "[*] Testing connectivity to $IPAddress..." -ForegroundColor Yellow
     
     $pingResult = Test-Connection -ComputerName $IPAddress -Count 2 -Quiet
     
     if ($pingResult) {
-        Write-Host "[+] الجهاز $IPAddress متصل" -ForegroundColor Green
+        Write-Host "[+] Device $IPAddress is online" -ForegroundColor Green
         return $true
     } else {
-        Write-Host "[-] الجهاز $IPAddress غير متصل" -ForegroundColor Red
+        Write-Host "[-] Device $IPAddress is offline" -ForegroundColor Red
         return $false
     }
 }
@@ -98,7 +98,7 @@ function Test-CommonPorts {
         [string]$IPAddress
     )
     
-    Write-Host "`n[*] فحص المنافذ الشائعة على $IPAddress..." -ForegroundColor Yellow
+    Write-Host "`n[*] Scanning common ports on $IPAddress..." -ForegroundColor Yellow
     
     $commonPorts = @{
         445 = "SMB/CIFS"
@@ -114,10 +114,10 @@ function Test-CommonPorts {
     $openPorts = @()
     
     foreach ($port in $commonPorts.Keys) {
-        $result = Test-NetConnection -ComputerName $IPAddress -Port $port -WarningAction SilentlyContinue
+        $result = Test-NetConnection -ComputerName $IPAddress -Port $port -WarningAction SilentlyContinue -InformationLevel Quiet -ErrorAction SilentlyContinue
         if ($result.TcpTestSucceeded) {
             $service = $commonPorts[$port]
-            Write-Host "[+] المنفذ $port مفتوح - $service" -ForegroundColor Green
+            Write-Host "[+] Port $port is open - $service" -ForegroundColor Green
             $openPorts += [PSCustomObject]@{
                 Port = $port
                 Service = $service
@@ -127,7 +127,7 @@ function Test-CommonPorts {
     }
     
     if ($openPorts.Count -eq 0) {
-        Write-Host "[-] لم يتم العثور على منافذ مفتوحة" -ForegroundColor Yellow
+        Write-Host "[-] No open ports found" -ForegroundColor Yellow
     }
     
     return $openPorts
@@ -139,20 +139,20 @@ function Get-SMBShares {
         [string]$IPAddress
     )
     
-    Write-Host "`n[*] فحص مشاركات SMB على $IPAddress..." -ForegroundColor Yellow
+    Write-Host "`n[*] Checking SMB shares on $IPAddress..." -ForegroundColor Yellow
     
     try {
         $shares = net view \\$IPAddress 2>&1
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "[+] تم العثور على مشاركات:" -ForegroundColor Green
+            Write-Host "[+] Found shares:" -ForegroundColor Green
             Write-Host $shares
             return $shares
         } else {
-            Write-Host "[-] لا يمكن الوصول إلى مشاركات SMB" -ForegroundColor Yellow
+            Write-Host "[-] Cannot access SMB shares" -ForegroundColor Yellow
             return $null
         }
     } catch {
-        Write-Host "[-] خطأ في الاتصال بـ $IPAddress" -ForegroundColor Red
+        Write-Host "[-] Error connecting to $IPAddress" -ForegroundColor Red
         return $null
     }
 }
@@ -164,53 +164,54 @@ function Export-Results {
     )
     
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    $outputFile = "network_scan_$timestamp.txt"
+    $outputFile = "network_scan_$timestamp.json"
     
-    $Results | Out-File -FilePath $outputFile -Encoding UTF8
+    $Results | ConvertTo-Json -Depth 5 | Out-File -FilePath $outputFile -Encoding UTF8
     
-    Write-Host "`n[+] تم حفظ النتائج في: $outputFile" -ForegroundColor Green
+    Write-Host "`n[+] Results saved to: $outputFile" -ForegroundColor Green
 }
 
-# البرنامج الرئيسي
+# Main program
 function Start-NetworkScan {
     Show-Banner
     
-    Write-Host "`n⚠️  تحذير: هذه الأداة للأغراض التعليمية فقط" -ForegroundColor Red
-    Write-Host "تأكد من حصولك على إذن قبل فحص أي شبكة`n" -ForegroundColor Red
+    Write-Host "`nWARNING: This tool is for educational purposes only" -ForegroundColor Red
+    Write-Host "Make sure you have permission before scanning any network`n" -ForegroundColor Red
     
-    $confirmation = Read-Host "هل تريد المتابعة؟ (Y/N)"
+    $confirmation = Read-Host "Do you want to continue? (Y/N)"
     if ($confirmation -ne "Y" -and $confirmation -ne "y") {
-        Write-Host "تم الإلغاء" -ForegroundColor Yellow
+        Write-Host "Cancelled" -ForegroundColor Yellow
         return
     }
     
-    # جمع معلومات الجهاز المحلي
+    # Gather local device information
     $localInfo = Get-LocalNetworkInfo
-    Write-Host "`n=== معلومات الجهاز المحلي ===" -ForegroundColor Cyan
-    Write-Host "اسم الجهاز: $($localInfo.Hostname)"
-    Write-Host "نظام التشغيل: $($localInfo.OS)"
-    Write-Host "الإصدار: $($localInfo.OSVersion)"
-    Write-Host "المعمارية: $($localInfo.Architecture)"
-    Write-Host "`nعناوين IP:"
+    Write-Host "`n=== Local Device Information ===" -ForegroundColor Cyan
+    Write-Host "Hostname: $($localInfo.Hostname)"
+    Write-Host "Operating System: $($localInfo.OS)"
+    Write-Host "Version: $($localInfo.OSVersion)"
+    Write-Host "Architecture: $($localInfo.Architecture)"
+    Write-Host "`nIP Addresses:"
     $localInfo.IPAddresses | Format-Table -AutoSize
     
-    # اكتشاف الأجهزة
+    # Discover devices
     $devices = Get-NetworkDevices
-    Write-Host "`n=== الأجهزة المكتشفة ===" -ForegroundColor Cyan
-    Write-Host "عدد الأجهزة: $($devices.Count)"
+    Write-Host "`n=== Discovered Devices ===" -ForegroundColor Cyan
+    Write-Host "Number of devices: $($devices.Count)"
     $devices | Format-Table -AutoSize
     
-    # فحص تفصيلي (اختياري)
-    $detailedScan = Read-Host "`nهل تريد إجراء فحص تفصيلي للأجهزة؟ (Y/N)"
+    # Detailed scan (optional)
+    $detailedScan = Read-Host "`nDo you want to perform a detailed scan? (Y/N)"
     if ($detailedScan -eq "Y" -or $detailedScan -eq "y") {
-        $targetIP = Read-Host "أدخل عنوان IP للفحص التفصيلي"
+        $targetIP = Read-Host "Enter IP address for detailed scan"
         
         if (Test-DeviceConnectivity -IPAddress $targetIP) {
             $ports = Test-CommonPorts -IPAddress $targetIP
             $shares = Get-SMBShares -IPAddress $targetIP
             
-            # حفظ النتائج
+            # Save results
             $results = @{
+                Timestamp = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
                 LocalInfo = $localInfo
                 Devices = $devices
                 DetailedScan = @{
@@ -220,12 +221,12 @@ function Start-NetworkScan {
                 }
             }
             
-            Export-Results -Results ($results | ConvertTo-Json -Depth 5)
+            Export-Results -Results $results
         }
     }
     
-    Write-Host "`n[✓] اكتمل الفحص!" -ForegroundColor Green
+    Write-Host "`n[+] Scan completed!" -ForegroundColor Green
 }
 
-# تشغيل الأداة
+# Run the tool
 Start-NetworkScan
